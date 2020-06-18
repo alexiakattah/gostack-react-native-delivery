@@ -5,7 +5,7 @@ import React, {
   useMemo,
   useLayoutEffect,
 } from 'react';
-import { Image } from 'react-native';
+import { Image, Alert } from 'react-native';
 
 import Icon from 'react-native-vector-icons/Feather';
 import MaterialIcon from 'react-native-vector-icons/MaterialIcons';
@@ -74,37 +74,111 @@ const FoodDetails: React.FC = () => {
   useEffect(() => {
     async function loadFood(): Promise<void> {
       // Load a specific food with extras based on routeParams id
+      const response = await api.get<Food>(`foods/${routeParams.id}`);
+
+      const detailedFood = response.data;
+
+      const formattedFood = {
+        ...detailedFood,
+        formattedPrice: formatValue(detailedFood.price),
+      };
+
+      setFood(formattedFood);
+
+      const formattedExtra = formattedFood.extras.map(extr => {
+        return {
+          ...extr,
+          quantity: 0,
+        };
+      });
+
+      setExtras(formattedExtra);
+
+      const haveFavorited = await api.get(`favorites/${routeParams.id}`);
+      if (haveFavorited) {
+        setIsFavorite(true);
+      }
     }
 
     loadFood();
   }, [routeParams]);
 
   function handleIncrementExtra(id: number): void {
-    // Increment extra quantity
+    const incrementExtra = [...extras];
+
+    const extraIndex = incrementExtra.findIndex(extr => extr.id === id);
+
+    if (extraIndex >= 0) {
+      incrementExtra[extraIndex].quantity += 1;
+
+      setExtras(incrementExtra);
+    }
   }
 
   function handleDecrementExtra(id: number): void {
     // Decrement extra quantity
+    const decrementExtra = [...extras];
+
+    const extraIndex = decrementExtra.findIndex(extr => extr.id === id);
+
+    if (extraIndex >= 0) {
+      if (decrementExtra[extraIndex].quantity <= 0) {
+        decrementExtra[extraIndex].quantity = 0;
+      } else {
+        decrementExtra[extraIndex].quantity -= 1;
+      }
+
+      setExtras(decrementExtra);
+    }
   }
 
   function handleIncrementFood(): void {
-    // Increment food quantity
+    const incrementFood = foodQuantity + 1;
+    setFoodQuantity(incrementFood);
   }
 
   function handleDecrementFood(): void {
-    // Decrement food quantity
+    const decrementFood = foodQuantity - 1;
+    if (decrementFood < 1) {
+      Alert.alert('Oooops...', 'Não é possivel ter uma quantidade abaixo de 1');
+    } else {
+      setFoodQuantity(decrementFood);
+    }
   }
 
   const toggleFavorite = useCallback(() => {
-    // Toggle if food is favorite or not
+    if (!isFavorite) {
+      api.post('favorites', food);
+      setIsFavorite(true);
+    } else {
+      api.delete(`favorites/${food.id}`);
+      setIsFavorite(false);
+    }
   }, [isFavorite, food]);
 
   const cartTotal = useMemo(() => {
     // Calculate cartTotal
+    const total = food.price * foodQuantity;
+
+    return extras.reduce((acc, item) => {
+      if (item.quantity) {
+        return acc + item.quantity * item.value;
+      }
+      return acc;
+    }, total);
   }, [extras, food, foodQuantity]);
 
   async function handleFinishOrder(): Promise<void> {
     // Finish the order and save on the API
+    const order = {
+      product_id: food.id,
+      name: food.name,
+      description: food.description,
+      price: cartTotal,
+      thumbnail_url: food.image_url,
+      extras,
+    };
+    api.post('orders', order);
   }
 
   // Calculate the correct icon name
@@ -179,7 +253,9 @@ const FoodDetails: React.FC = () => {
         <TotalContainer>
           <Title>Total do pedido</Title>
           <PriceButtonContainer>
-            <TotalPrice testID="cart-total">{cartTotal}</TotalPrice>
+            <TotalPrice testID="cart-total">
+              {formatValue(cartTotal)}
+            </TotalPrice>
             <QuantityContainer>
               <Icon
                 size={15}
